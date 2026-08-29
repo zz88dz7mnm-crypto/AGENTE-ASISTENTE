@@ -166,3 +166,12 @@ export function IconRefresh({ size = 15, className, strokeWidth }: IconProps) {
     </svg>
   );
 }
+
+export function IconLogout({ size = 18, className, strokeWidth }: IconProps) {
+  return (
+    <svg {...svg(size, className, strokeWidth)}>
+      <path d="M14.5 5.5V4a1 1 0 0 0-1-1h-8a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1.5" />
+      <path d="M10 12h10M17 9l3 3-3 3" />
+    </svg>
+  );
+}

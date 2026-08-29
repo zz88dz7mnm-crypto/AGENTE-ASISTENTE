@@ -10,8 +10,10 @@ import {
   IconFile,
   IconHeart,
   IconHome,
+  IconLogout,
   IconWallet,
 } from "./icons";
+import { useAuth } from "@/lib/auth";
 
 const SECTIONS = [
   { href: "/", label: "Dashboard", Icon: IconHome },
@@ -173,9 +175,29 @@ export function Rail() {
                 </Link>
               );
             })}
+            <SignOutButton />
           </nav>
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Sólo aparece con Supabase conectado: en modo local no hay sesión que cerrar.
+ */
+function SignOutButton() {
+  const { session, signOut } = useAuth();
+  if (!session) return null;
+
+  return (
+    <button
+      onClick={() => void signOut()}
+      className="mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] transition-colors"
+      style={{ color: "var(--color-text-soft)" }}
+    >
+      <IconLogout size={17} className="shrink-0" />
+      <span>Cerrar sesión</span>
+    </button>
   );
 }

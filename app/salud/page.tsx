@@ -34,8 +34,13 @@ export default function SaludPage() {
   const activeDays30 = days30.filter((d) => activeSet.has(d)).length;
 
   const streak = useMemo(() => {
+    // Se cuenta hacia atrás desde hoy. Si hoy todavía no está marcado, la racha
+    // arranca en ayer: de lo contrario mostraría 0 durante todo el día hasta
+    // que el usuario marque la actividad.
+    let i = days30.length - 1;
+    if (!activeSet.has(days30[i])) i--;
     let n = 0;
-    for (let i = days30.length - 1; i >= 0; i--) {
+    for (; i >= 0; i--) {
       if (activeSet.has(days30[i])) n++;
       else break;
     }

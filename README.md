@@ -1,83 +1,134 @@
-# AGENTE PRUEBA — Fase 3 (revisión y mejora)
+# AGENTE PRUEBA
 
-Asistente personal minimalista y mobile-first: tareas, estudio, agenda, finanzas y salud
-en un solo lugar, más el histórico de reportes automáticos.
+Asistente personal web: tareas, estudio, agenda, finanzas y salud en un solo
+lugar, con un reporte automático cada mañana.
 
-## Correr en local
+Next.js (App Router) + Tailwind + Supabase. Mobile-first, sin emojis.
+
+---
+
+## Cómo correrlo
 
 ```bash
 npm install
-npm run dev
+npm run dev        # http://localhost:3000
 ```
 
-Abrir http://localhost:3000
+Sin variables de entorno la app arranca en **modo local**: datos de ejemplo
+guardados en el navegador (localStorage), sin login y sin base de datos. Sirve
+para trabajar en el diseño sin tocar datos reales.
 
-## Qué cambió en esta vuelta (mejoras sobre la versión revisada)
+Otros comandos:
 
-**Identidad visual**
-- Se mantiene la paleta del plan (fondo #F5F4F1, cards #FDFDFC, acento #1F3D2B).
-- Textura mármol real: vetas suaves en gradiente + grano fino generado por SVG, fija al viewport.
-- Tipografía nueva: **Manrope** para interfaz (más carácter que Inter) e **IBM Plex Mono**
-  reservada solo para cifras, horas y métricas (`.font-num`, tabular).
-- Sistema de tokens ampliado: radios, cuatro niveles de sombra, curvas de easing y
-  jerarquía de texto (`.display`, `.h1`, `.label`, `.muted`).
-- Sin emojis. Íconos de trazo lineal unificados, con grosor consistente.
+```bash
+npm run build      # build de producción
+npm run lint       # eslint
+npm test           # tests de la lógica del reporte diario
+npm run report     # genera el reporte de hoy (requiere las claves de servidor)
+```
 
-**Navegación**
-- El riel lateral ahora es un componente doble: en escritorio queda fijo con íconos y
-  tooltip por sección; en mobile sigue siendo la franja delgada del borde izquierdo
-  (con marcador de posición de sección) que se despliega con swipe o tap.
-- Cierre con Escape, fondo con blur y entrada animada de los ítems.
+---
 
-**Dashboard**
-- Saludo + fecha larga, anillo de progreso animado con leyenda.
-- Franja de cuatro métricas: tareas de hoy, estudio de hoy, balance semanal, días activos.
-- Cronograma con línea de "ahora" y check directo desde el timeline.
-- Tarjeta con el último reporte automático y accesos rápidos con ícono.
+## Conectar Supabase
 
-**Tareas y estudio**
-- Filtros Hoy / Semana / Todo, agrupado por día con etiquetas relativas (Hoy, Mañana, día de la semana).
-- Alta con fecha + horario, no solo hoy.
-- Marca de "Atrasada", check con animación de trazo y estados vacíos con explicación.
+### 1. Crear las tablas
 
-**Calendario**
-- Día seleccionado en grande con cronograma y bloque "sin horario".
-- Mes con hasta tres puntos por día según cantidad de ítems, anillo en el día actual y botón "Hoy".
+En el proyecto de Supabase → **SQL Editor**, pegar y ejecutar el contenido de
+[`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
 
-**Finanzas**
-- Gráfico de barras con línea de base en cero (positivo/negativo) y tooltip al pasar el mouse.
-- Ranking de egresos por categoría con porcentaje sobre el total.
-- Rango semana/mes aplicado a todas las métricas.
-- Carga por voz mejorada: entiende "2 mil"/"2 lucas", más categorías, feedback de lo cargado.
+Crea las cinco tablas (`tasks`, `study`, `finance`, `health`, `reports`), sus
+índices y las políticas de RLS.
 
-**Salud**
-- Serie de peso como área con grilla, cursor y lectura del punto activo.
-- Mapa de actividad en columnas semanales con etiquetas de día y marca del día actual.
-- Métricas de racha y días activos 7/30.
+Con la CLI, alternativamente:
 
-**Reportes**
-- Selector de fecha en tarjetas con etiqueta relativa, detalle en bloques
-  (resumen, qué toca hoy numerado, plata con balance, hábitos).
+```bash
+supabase login
+supabase link --project-ref znpnbuxmgatyjqtdpync
+supabase db push
+```
 
-**Base técnica**
-- `lib/date-utils.ts`: utilidades nuevas (fechas relativas, minutos, formato de plata, rangos N días).
-- `lib/store.tsx`: validación del payload de localStorage antes de hidratar, `updateTask`/`updateStudy`.
-- `lib/sample-data.ts`: 30 días de salud y ~16 movimientos para que los gráficos tengan sentido.
-- Skeletons de carga en lugar de pantalla en blanco mientras hidrata.
-- `prefers-reduced-motion` respetado en todas las animaciones.
+### 2. Crear el usuario
+
+En **Authentication → Users → Add user**, con email y contraseña. Ese es el
+único usuario del sistema: es con el que se entra a la web.
+
+> Conviene desactivar el registro abierto en **Authentication → Providers →
+> Email → Allow new users to sign up**, para que nadie más pueda crearse cuenta.
+
+### 3. Variables de entorno
+
+Copiar `.env.example` a `.env.local` (local) y cargar las mismas dos variables
+en **Vercel → Settings → Environment Variables**:
+
+| Variable | Valor |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://znpnbuxmgatyjqtdpync.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | la publishable key del proyecto |
+
+En cuanto existan esas variables, la app deja de usar localStorage y pasa a
+pedir login y a guardar todo en Supabase.
+
+### Sobre la seguridad
+
+La publishable key viaja al navegador — es pública por diseño. Lo que protege
+los datos son dos cosas:
+
+- **RLS**: cada fila queda atada a un `user_id` y las políticas sólo dejan leer
+  y escribir las filas propias.
+- **Login**: sin sesión la app no muestra ninguna pantalla con datos.
+
+Sin esto, cualquiera que abriera la URL de Vercel podría leer las finanzas y el
+peso. La `service_role` key **nunca** va en Vercel ni en el repo: sólo en el
+entorno de la rutina diaria.
+
+---
+
+## Reporte automático de las 2:00 AM
+
+Corre como **Routine de Claude Code**, en un sandbox en la nube que se destruye
+al terminar. No consume API aparte de la suscripción.
+
+Qué hace, cada noche:
+
+1. Clona el repo y lee de Supabase lo de ayer y lo de hoy.
+2. Calcula: qué se completó y qué quedó abierto, ingresos/egresos de la semana,
+   categorías donde más se gastó, días activos y variación de peso.
+3. Redacta el reporte y lo guarda en la tabla `reports`.
+4. La web lo muestra al instante en la sección Reportes.
+
+El reporte es **idempotente**: la tabla tiene un único registro por día
+(`unique (user_id, date)`), así que volver a correrla reescribe en vez de
+duplicar.
+
+### Variables que necesita la Routine
+
+Se cargan en el entorno de Claude Code, **no** en Vercel:
+
+| Variable | Para qué |
+| --- | --- |
+| `SUPABASE_URL` | URL del proyecto |
+| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` (salta RLS para poder escribir el reporte) |
+| `AGENTE_USER_ID` | opcional; si hay una sola cuenta se detecta sola |
+
+### Probarlo a mano
+
+```bash
+npm run report -- --dry-run   # imprime el análisis sin escribir nada
+npm run report                # genera y guarda el reporte de hoy
+```
+
+---
 
 ## Estructura
 
 ```
-app/            rutas: dashboard, tareas, estudio, calendario, finanzas, salud, reportes
-components/     riel, listas, cronograma, calendario, gráficos, primitivas de UI
-lib/            tipos, store con localStorage, utilidades de fecha, datos de ejemplo
+app/              páginas (dashboard, tareas, estudio, calendario, finanzas, salud, reportes)
+components/       UI compartida, gráficos, riel de navegación, login
+lib/              tipos, store, cliente de Supabase, auth, utilidades de fecha
+scripts/          rutina del reporte diario + sus tests
+supabase/         migraciones SQL
 ```
 
-## Notas
-
-- Los datos son de ejemplo y viven en localStorage (clave `agente-prueba:data:v1`).
-  Se reemplazan por Supabase en la Fase 4.
-- El archivo `CLAUDE.md` del proyecto original no viene en este zip por una restricción
-  del entorno de trabajo; su contenido era una sola línea: `@AGENTS.md`. Volvé a crearlo
-  con esa línea si lo necesitás.
+El **store** (`lib/store.tsx`) es el único punto que sabe de dónde salen los
+datos: expone la misma API en modo local y en modo conectado, así que las
+páginas no cambian según el backend.

@@ -2,7 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
+import { AuthProvider } from "@/lib/auth";
+import { AuthGate } from "@/components/auth-gate";
 import { Rail } from "@/components/rail";
+import { SyncNotice } from "@/components/sync-notice";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -35,12 +38,17 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${manrope.variable} ${plexMono.variable}`}>
-        <DataProvider>
-          <Rail />
-          <main className="mx-auto min-h-screen w-full max-w-[1020px] pl-7 pr-5 pb-20 pt-7 sm:pl-10 sm:pr-8 sm:pt-10 lg:pl-[92px]">
-            {children}
-          </main>
-        </DataProvider>
+        <AuthProvider>
+          <AuthGate>
+            <DataProvider>
+              <Rail />
+              <SyncNotice />
+              <main className="mx-auto min-h-screen w-full max-w-[1020px] pl-7 pr-5 pb-20 pt-7 sm:pl-10 sm:pr-8 sm:pt-10 lg:pl-[92px]">
+                {children}
+              </main>
+            </DataProvider>
+          </AuthGate>
+        </AuthProvider>
       </body>
     </html>
   );

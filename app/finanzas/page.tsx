@@ -55,6 +55,13 @@ export default function FinanzasPage() {
   const egresos = periodEntries.filter((f) => f.type === "egreso").reduce((a, f) => a + f.amount, 0);
   const balance = ingresos - egresos;
 
+  // Ordenados por fecha: la lista es "recientes", y un movimiento cargado con
+  // fecha vieja no debe encabezarla solo por haber sido el último en entrar.
+  const recent = useMemo(
+    () => [...finance].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 14),
+    [finance]
+  );
+
   const categories = useMemo(() => {
     const map = new Map<string, number>();
     periodEntries
@@ -67,8 +74,10 @@ export default function FinanzasPage() {
   }, [periodEntries]);
 
   function submit() {
-    const n = parseFloat(amount);
-    if (!n || !category.trim()) return;
+    // El signo lo define el tipo (ingreso/egreso), no el número: un monto
+    // negativo tipeado por error invertiría el movimiento sin avisar.
+    const n = Math.abs(parseFloat(amount));
+    if (!Number.isFinite(n) || n === 0 || !category.trim()) return;
     addFinance({ type, amount: n, category: category.trim(), date: today });
     setAmount("");
     setCategory("");
@@ -155,7 +164,7 @@ export default function FinanzasPage() {
 
       <div className="flex flex-col gap-2">
         <SectionLabel>Movimientos recientes</SectionLabel>
-        {finance.slice(0, 14).map((f, i) => (
+        {recent.map((f, i) => (
           <div
             key={f.id}
             className="card hoverable group flex items-center gap-3 px-3.5 py-3"
