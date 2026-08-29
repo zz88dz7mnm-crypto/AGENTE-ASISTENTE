@@ -90,7 +90,10 @@ export default function ReportesPage() {
                 </Card>
 
                 <Card>
-                  <SectionLabel>Plata del día</SectionLabel>
+                  {/* El reporte agrega los últimos 7 días, no sólo la fecha
+                      del reporte: el rótulo tiene que decir lo mismo que el
+                      número. */}
+                  <SectionLabel>Plata de la semana</SectionLabel>
                   <div className="flex flex-col gap-3">
                     <Line label="Ingresos" value={money(selected.plata.ingresos)} color="var(--color-positive)" />
                     <Line label="Egresos" value={money(selected.plata.egresos)} color="var(--color-alert)" />

@@ -11,7 +11,8 @@ interface Auth {
   /** false mientras se resuelve la sesión inicial: evita parpadeo del login. */
   ready: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signOut: () => Promise<void>;
+  /** Devuelve el mensaje de error, o null si la sesión se cerró de verdad. */
+  signOut: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<Auth | null>(null);
@@ -23,13 +24,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!supabase) return;
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    // El listener manda: emite INITIAL_SESSION al suscribirse y después cada
+    // cambio. getSession() sólo cubre el caso de que esa emisión no llegue, y
+    // se descarta si el listener ya habló: si no, un SIGNED_OUT que llegue
+    // antes de que resuelva la promesa quedaría pisado por la sesión vieja.
+    let settled = false;
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      settled = true;
+      setSession(next);
       setReady(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
+    supabase.auth.getSession().then(({ data }) => {
+      if (settled) return;
+      setSession(data.session);
       setReady(true);
     });
 
@@ -47,7 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return error ? error.message : null;
       },
       async signOut() {
-        await supabase?.auth.signOut();
+        // Es la única acción de seguridad de la app: si falla, el usuario tiene
+        // que enterarse en vez de creer que quedó cerrada.
+        const { error } = (await supabase?.auth.signOut()) ?? { error: null };
+        return error ? error.message : null;
       },
     }),
     [session, ready]

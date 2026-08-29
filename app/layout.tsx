@@ -38,6 +38,12 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Agente",
   },
+  other: {
+    // Next 16 emite sólo `mobile-web-app-capable`. iOS anterior a 16.4 mira
+    // el meta viejo: sin él, "Agregar a inicio" abre con la barra de Safari
+    // en vez de a pantalla completa.
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {

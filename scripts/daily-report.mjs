@@ -21,12 +21,15 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { addDays, analyze, buildReport, isoDate } from "./report-logic.mjs";
+import { addDays, analyze, buildReport, todayIn } from "./report-logic.mjs";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
+// Zona horaria del usuario, no la del servidor donde corre la rutina.
+const TZ = process.env.AGENTE_TZ || "America/Argentina/Buenos_Aires";
+
 // La rutina corre a las 2 AM: el "hoy" del reporte es el día que arranca.
-const today = isoDate(new Date());
+const today = todayIn(TZ);
 const yesterday = addDays(today, -1);
 const weekStart = addDays(today, -6);
 

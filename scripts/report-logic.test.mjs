@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDays, analyze, buildReport, writeResumenAyer, writeHabitos } from "./report-logic.mjs";
+import { addDays, analyze, buildReport, writeResumenAyer, writeHabitos, todayIn } from "./report-logic.mjs";
 
 const TODAY = "2026-03-10";
 const YESTERDAY = addDays(TODAY, -1); // 2026-03-09
@@ -95,4 +95,23 @@ test("la fila del reporte usa la fecha y el usuario recibidos", () => {
   const row = buildReport(analyze(fixture, TODAY), "abc-123", TODAY);
   assert.equal(row.user_id, "abc-123");
   assert.equal(row.date, TODAY);
+});
+
+test("la fecha se calcula en la zona del usuario, no en la del servidor", () => {
+  // A las 02:00 de Argentina son las 05:00 UTC del mismo día: coincide.
+  // Pero a las 23:00 de Argentina ya es el día siguiente en UTC, y ahí es
+  // donde el cálculo ingenuo se corría un día.
+  const realDate = Date;
+  globalThis.Date = class extends realDate {
+    constructor(...args) {
+      if (args.length === 0) super("2026-03-11T02:00:00Z"); // 23:00 del 10 en Argentina
+      else super(...args);
+    }
+  };
+  try {
+    assert.equal(todayIn("America/Argentina/Buenos_Aires"), "2026-03-10");
+    assert.equal(todayIn("UTC"), "2026-03-11");
+  } finally {
+    globalThis.Date = realDate;
+  }
 });

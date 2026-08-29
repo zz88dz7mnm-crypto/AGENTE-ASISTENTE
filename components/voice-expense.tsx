@@ -39,7 +39,10 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 export function parseSpeech(text: string): Omit<FinanceEntry, "id"> | null {
   const lower = text.toLowerCase();
-  const match = lower.match(/(\d+(?:[.,]\d+)?)\s*(mil|luca|lucas|k)?/);
+  // El multiplicador tiene que terminar en límite de palabra: sin eso, la "k"
+  // matchea el arranque de "kilos" o "km" y "3 kilos de asado" se carga
+  // como un gasto de 3000.
+  const match = lower.match(/(\d+(?:[.,]\d+)?)\s*(mil|lucas?|k)?\b/);
   if (!match) return null;
   let amount = parseFloat(match[1].replace(",", "."));
   if (match[2]) amount *= 1000;

@@ -188,16 +188,19 @@ export function Rail() {
  */
 function SignOutButton() {
   const { session, signOut } = useAuth();
+  const [failed, setFailed] = useState(false);
   if (!session) return null;
 
   return (
     <button
-      onClick={() => void signOut()}
+      onClick={() => void signOut().then((err) => setFailed(Boolean(err)))}
       className="mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] transition-colors"
       style={{ color: "var(--color-text-soft)" }}
     >
       <IconLogout size={17} className="shrink-0" />
-      <span>Cerrar sesión</span>
+      <span style={{ color: failed ? "var(--color-alert)" : undefined }}>
+        {failed ? "No se pudo cerrar. Reintentar" : "Cerrar sesión"}
+      </span>
     </button>
   );
 }

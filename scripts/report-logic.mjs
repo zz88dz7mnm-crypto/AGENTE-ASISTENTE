@@ -11,6 +11,24 @@ export function isoDate(d) {
   ).padStart(2, "0")}`;
 }
 
+/**
+ * Fecha de hoy en la zona horaria del usuario, no en la del servidor.
+ *
+ * La rutina corre en un sandbox que casi seguro está en UTC. A las 2:00 de
+ * Argentina son las 05:00 UTC del mismo día, así que hoy coincide por
+ * casualidad; pero con otro horario de disparo, o con otra zona, el script
+ * calcularía un día corrido y el "resumen de ayer" cubriría el día en curso.
+ */
+export function todayIn(timeZone) {
+  // en-CA da directamente el formato YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export function addDays(iso, days) {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, m - 1, d);

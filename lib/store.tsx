@@ -13,8 +13,14 @@ import { AppData, DailyReport, FinanceEntry, HealthEntry, TaskItem } from "./typ
 import { buildSampleData } from "./sample-data";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import { useAuth } from "./auth";
+import { addDays, todayISO } from "./date-utils";
 
 const STORAGE_KEY = "agente-prueba:data:v1";
+
+// Ventanas de consulta. PostgREST corta en 1000 filas sin avisar, así que se
+// acota por fecha en vez de confiar en que el volumen nunca llegue al tope.
+const HISTORY_DAYS = 730;
+const AGENDA_DAYS = 365;
 
 function uid(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -122,6 +128,14 @@ const toReport = (r: ReportRow): DailyReport => ({
   habitos: r.habitos,
 });
 
+/* --------------------------------------------------------------- escrituras */
+
+/** Lo que devuelve una escritura de PostgREST con `.select()` encadenado. */
+type WriteResult = {
+  error: { message: string } | null;
+  data: { id: string }[] | null;
+};
+
 /* ---------------------------------------------------------------- provider */
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -132,24 +146,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Evita que una recarga en curso pise una edición más nueva del usuario.
+  // Espejo síncrono del estado. Las mutaciones calculan el estado siguiente a
+  // partir de acá y no desde el updater de setData: React puede diferir ese
+  // updater, y la escritura a la base necesita el valor ya resuelto.
+  const dataRef = useRef<AppData>(data);
+
+  // Cualquier recarga en vuelo cuyo token quedó viejo se descarta. Lo
+  // incrementan tanto reload() como cada mutación, así que una respuesta que
+  // salió antes de una edición del usuario nunca la pisa.
   const loadToken = useRef(0);
+
+  // Escrituras en curso: el aviso de error sólo se limpia cuando no queda
+  // ninguna, para no borrar el mensaje de otra que falló en paralelo.
+  const inFlight = useRef(0);
+
+  const apply = useCallback((next: AppData) => {
+    dataRef.current = next;
+    setData(next);
+  }, []);
 
   const reload = useCallback(async () => {
     if (!supabase || !userId) return;
     const token = ++loadToken.current;
 
+    const today = todayISO();
+    const historyFloor = addDays(today, -HISTORY_DAYS);
+    const agendaFloor = addDays(today, -AGENDA_DAYS);
+
     const [tasks, study, finance, health, reports] = await Promise.all([
-      supabase.from("tasks").select("id,title,date,time,done").order("date"),
-      supabase.from("study").select("id,title,date,time,done").order("date"),
-      supabase.from("finance").select("id,type,amount,category,date,note").order("date", { ascending: false }),
-      supabase.from("health").select("id,date,weight,active").order("date", { ascending: false }),
+      supabase.from("tasks").select("id,title,date,time,done").gte("date", agendaFloor).order("date"),
+      supabase.from("study").select("id,title,date,time,done").gte("date", agendaFloor).order("date"),
+      supabase
+        .from("finance")
+        .select("id,type,amount,category,date,note")
+        .gte("date", historyFloor)
+        .order("date", { ascending: false }),
+      supabase
+        .from("health")
+        .select("id,date,weight,active")
+        .gte("date", historyFloor)
+        .order("date", { ascending: false }),
       supabase
         .from("reports")
         .select("id,date,resumen_ayer,hoy,ingresos,egresos,habitos")
+        .gte("date", historyFloor)
         .order("date", { ascending: false }),
     ]);
 
+    // Si el usuario editó mientras esto viajaba, su edición es más nueva.
     if (token !== loadToken.current) return;
 
     const failure = [tasks, study, finance, health, reports].find((r) => r.error);
@@ -160,7 +204,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     setError(null);
-    setData({
+    apply({
       tasks: (tasks.data ?? []).map(toTask),
       study: (study.data ?? []).map(toTask),
       finance: (finance.data ?? []).map(toFinance),
@@ -168,7 +212,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       reports: (reports.data ?? []).map(toReport),
     });
     setReady(true);
-  }, [userId]);
+  }, [userId, apply]);
 
   // Bootstrap del origen de datos. Es un efecto a propósito: tanto localStorage
   // como Supabase son sistemas externos al render y sólo existen en el cliente,
@@ -180,7 +224,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (remote) {
       setReady(false);
       // Arranca vacío para no mostrar datos de ejemplo mientras carga la cuenta.
-      setData(EMPTY);
+      apply(EMPTY);
       void reload();
       return;
     }
@@ -188,7 +232,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (isSupabaseConfigured) {
       // Configurado pero sin sesión: no hay nada que mostrar (el AuthGate
       // muestra el login por encima de todo esto).
-      setData(EMPTY);
+      apply(EMPTY);
       setReady(true);
       return;
     }
@@ -198,13 +242,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (isValid(parsed)) setData(parsed);
+        if (isValid(parsed)) apply(parsed);
       }
     } catch {
       // localStorage no disponible: seguimos con datos de ejemplo en memoria
     }
     setReady(true);
-  }, [authReady, remote, reload]);
+  }, [authReady, remote, reload, apply]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -217,25 +261,49 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [data, ready, remote]);
 
   /**
-   * Aplica el cambio en pantalla al instante y lo manda a la base. Si la
-   * escritura falla, recarga desde el servidor para no dejar en pantalla algo
+   * Aplica el cambio en pantalla al instante y lo manda a la base.
+   *
+   * `compute` se ejecuta acá y no dentro de setData: así el estado siguiente
+   * queda resuelto antes de armar la escritura, y lo que se guarda es
+   * exactamente lo que se muestra.
+   *
+   * Si la escritura falla, o si no tocó ninguna fila (PostgREST no lo trata
+   * como error), se recarga desde el servidor para no dejar en pantalla algo
    * que en realidad no se guardó.
    */
   const mutate = useCallback(
-    (optimistic: (d: AppData) => AppData, write?: () => PromiseLike<{ error: { message: string } | null }>) => {
-      setData(optimistic);
+    (
+      compute: (d: AppData) => AppData,
+      write?: () => PromiseLike<WriteResult>,
+      onWritten?: (rows: { id: string }[]) => void
+    ) => {
+      const next = compute(dataRef.current);
+      loadToken.current++;
+      apply(next);
+
       if (!remote || !write) return;
+
+      inFlight.current++;
       void (async () => {
-        const { error: writeError } = await write();
-        if (writeError) {
-          setError(`No se pudo guardar: ${writeError.message}`);
+        const result = await write();
+        inFlight.current--;
+
+        const noRows = !result.error && (result.data?.length ?? 0) === 0;
+        if (result.error || noRows) {
+          setError(
+            result.error
+              ? `No se pudo guardar: ${result.error.message}`
+              : "No se pudo guardar: la base no registró el cambio."
+          );
           void reload();
-        } else {
-          setError(null);
+          return;
         }
+
+        onWritten?.(result.data ?? []);
+        if (inFlight.current === 0) setError(null);
       })();
     },
-    [remote, reload]
+    [remote, reload, apply]
   );
 
   const addItem = useCallback(
@@ -248,6 +316,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             supabase!
               .from(table)
               .insert({ id: item.id, user_id: userId, title, date, time: time ?? null, done: false })
+              .select("id")
         );
       },
     [mutate, userId]
@@ -255,17 +324,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const toggleItem = useCallback(
     (table: "tasks" | "study", key: "tasks" | "study") => (id: string) => {
-      let next = false;
+      const current = dataRef.current[key].find((t) => t.id === id);
+      if (!current) return;
+      const done = !current.done;
+
       mutate(
-        (d) => ({
-          ...d,
-          [key]: d[key].map((t) => {
-            if (t.id !== id) return t;
-            next = !t.done;
-            return { ...t, done: next };
-          }),
-        }),
-        () => supabase!.from(table).update({ done: next }).eq("id", id)
+        (d) => ({ ...d, [key]: d[key].map((t) => (t.id === id ? { ...t, done } : t)) }),
+        () => supabase!.from(table).update({ done }).eq("id", id).select("id")
       );
     },
     [mutate]
@@ -275,7 +340,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (table: "tasks" | "study", key: "tasks" | "study") => (id: string) => {
       mutate(
         (d) => ({ ...d, [key]: d[key].filter((t) => t.id !== id) }),
-        () => supabase!.from(table).delete().eq("id", id)
+        () => supabase!.from(table).delete().eq("id", id).select("id")
       );
     },
     [mutate]
@@ -295,6 +360,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               ...(patch.done !== undefined ? { done: patch.done } : {}),
             })
             .eq("id", id)
+            .select("id")
       );
     },
     [mutate]
@@ -316,15 +382,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       mutate(
         (d) => ({ ...d, finance: [row, ...d.finance] }),
         () =>
-          supabase!.from("finance").insert({
-            id: row.id,
-            user_id: userId,
-            type: row.type,
-            amount: row.amount,
-            category: row.category,
-            date: row.date,
-            note: row.note ?? null,
-          })
+          supabase!
+            .from("finance")
+            .insert({
+              id: row.id,
+              user_id: userId,
+              type: row.type,
+              amount: row.amount,
+              category: row.category,
+              date: row.date,
+              note: row.note ?? null,
+            })
+            .select("id")
       );
     },
     [mutate, userId]
@@ -334,7 +403,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       mutate(
         (d) => ({ ...d, finance: d.finance.filter((f) => f.id !== id) }),
-        () => supabase!.from("finance").delete().eq("id", id)
+        () => supabase!.from("finance").delete().eq("id", id).select("id")
       );
     },
     [mutate]
@@ -343,38 +412,55 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const upsertHealth = useCallback(
     (date: string, patch: Partial<Omit<HealthEntry, "id" | "date">>) => {
       // La fila del día puede no existir todavía: se resuelve con upsert sobre
-      // la clave (user_id, date), que es única en la base.
-      let merged: HealthEntry = { id: uid(), date, ...patch };
+      // la clave (user_id, date), que es única en la base. El merge se calcula
+      // acá para que lo que se guarda incluya los campos que no vienen en el
+      // patch (marcar actividad no debe borrar el peso del día, ni al revés).
+      const existing = dataRef.current.health.find((h) => h.date === date);
+      const merged: HealthEntry = existing
+        ? { ...existing, ...patch }
+        : { id: uid(), date, ...patch };
+
       mutate(
-        (d) => {
-          const existing = d.health.find((h) => h.date === date);
-          merged = existing ? { ...existing, ...patch } : merged;
-          return {
-            ...d,
-            health: existing
-              ? d.health.map((h) => (h.date === date ? merged : h))
-              : [merged, ...d.health],
-          };
-        },
+        (d) => ({
+          ...d,
+          health: existing
+            ? d.health.map((h) => (h.date === date ? merged : h))
+            : [merged, ...d.health],
+        }),
         () =>
-          supabase!.from("health").upsert(
-            {
-              user_id: userId,
-              date,
-              weight: merged.weight ?? null,
-              active: merged.active ?? false,
-            },
-            { onConflict: "user_id,date" }
-          )
+          supabase!
+            .from("health")
+            .upsert(
+              {
+                user_id: userId,
+                date,
+                weight: merged.weight ?? null,
+                active: merged.active ?? false,
+              },
+              { onConflict: "user_id,date" }
+            )
+            .select("id"),
+        // El id lo genera la base en el alta: se adopta el real para que la
+        // fila local no quede con un id fantasma que no existe en Supabase.
+        (rows) => {
+          const realId = rows[0]?.id;
+          if (!realId || realId === merged.id) return;
+          apply({
+            ...dataRef.current,
+            health: dataRef.current.health.map((h) =>
+              h.date === date ? { ...h, id: realId } : h
+            ),
+          });
+        }
       );
     },
-    [mutate, userId]
+    [mutate, userId, apply]
   );
 
   const resetSampleData = useCallback(() => {
     if (remote) return; // en modo conectado los datos reales no se pisan
-    setData(buildSampleData());
-  }, [remote]);
+    apply(buildSampleData());
+  }, [remote, apply]);
 
   const value = useMemo<Store>(
     () => ({
