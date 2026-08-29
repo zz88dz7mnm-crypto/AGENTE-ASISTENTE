@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth";
 import { AuthGate } from "@/components/auth-gate";
 import { Rail } from "@/components/rail";
 import { SyncNotice } from "@/components/sync-notice";
+import { RegisterSW } from "@/components/register-sw";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -22,6 +23,21 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Agente · Asistente personal",
   description: "Tareas, estudio, agenda, finanzas y salud en un solo lugar.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Agente",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Agente",
+  },
 };
 
 export const viewport: Viewport = {
@@ -38,6 +54,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${manrope.variable} ${plexMono.variable}`}>
+        <RegisterSW />
         <AuthProvider>
           <AuthGate>
             <DataProvider>
