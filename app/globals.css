@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f5f4f1;
+  --color-surface: #fdfdfc;
+  --color-border: #e5e3de;
+  --color-text: #1a1f1c;
+  --color-text-soft: #6e7268;
+  --color-accent: #1f3d2b;
+  --color-accent-soft: #2b4f38;
+  --color-positive: #3d7a5c;
+  --color-alert: #b8503d;
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-text-soft: var(--color-text-soft);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-positive: var(--color-positive);
+  --color-alert: var(--color-alert);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--color-text);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(at 15% 8%, rgba(255, 255, 255, 0.55) 0px, transparent 45%),
+    radial-gradient(at 85% 92%, rgba(26, 31, 28, 0.035) 0px, transparent 50%),
+    radial-gradient(at 70% 15%, rgba(26, 31, 28, 0.025) 0px, transparent 40%),
+    radial-gradient(at 30% 85%, rgba(26, 31, 28, 0.03) 0px, transparent 40%);
+  background-attachment: fixed;
+}
+
+.font-num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.divider {
+  border-color: var(--color-border);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-surface);
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  scrollbar-width: none;
+}
