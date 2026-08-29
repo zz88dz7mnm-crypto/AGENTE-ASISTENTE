@@ -1,23 +1,31 @@
 "use client";
 
 import { useStore } from "@/lib/store";
-import { todayISO } from "@/lib/date-utils";
 import { TaskList } from "@/components/task-list";
 import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/ui";
 
 export default function EstudioPage() {
   const { study, addStudy, toggleStudy, removeStudy, ready } = useStore();
-  if (!ready) return null;
+  if (!ready) return <PageSkeleton />;
+
+  const pending = study.filter((t) => !t.done).length;
 
   return (
     <div>
-      <PageHeader title="Estudio" subtitle="Lo que tiene horario aparece en el cronograma diario." />
+      <PageHeader
+        eyebrow={`${pending} abiertas`}
+        title="Estudio"
+        subtitle="Pendientes de estudio. Lo que tiene horario se integra al cronograma diario."
+      />
       <TaskList
         items={study}
         onToggle={toggleStudy}
         onRemove={removeStudy}
-        onAdd={(title, time) => addStudy(title, todayISO(), time)}
-        emptyLabel="No hay pendientes de estudio."
+        onAdd={addStudy}
+        placeholder="Nuevo pendiente de estudio"
+        emptyLabel="No hay pendientes en este período"
+        emptyHint="Cargá lecturas, clases o prácticas y asignales horario para verlas en el día."
       />
     </div>
   );

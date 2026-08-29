@@ -2,104 +2,140 @@
 
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { formatLong } from "@/lib/date-utils";
+import { formatLong, money, moneySigned, relativeDayLabel, todayISO } from "@/lib/date-utils";
 import { PageHeader } from "@/components/page-header";
 import { IconFile } from "@/components/icons";
+import { Card, Empty, PageSkeleton, SectionLabel } from "@/components/ui";
 
 export default function ReportesPage() {
   const { reports, ready } = useStore();
+  const today = todayISO();
   const sorted = [...reports].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const [selectedId, setSelectedId] = useState<string | null>(sorted[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = sorted.find((r) => r.id === selectedId) ?? sorted[0];
 
-  if (!ready) return null;
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div>
       <PageHeader
+        eyebrow="Automático · 2:00 AM"
         title="Reportes"
-        subtitle="Se generan solos todos los días a las 2:00 AM. Histórico navegable por fecha."
+        subtitle="Se generan solos todas las noches: cómo cerró el día anterior y qué toca hoy. Histórico navegable por fecha."
       />
 
       {sorted.length === 0 ? (
-        <div className="card flex flex-col items-center gap-2 px-4 py-10 text-center">
-          <span style={{ color: "var(--color-text-soft)" }}>
-            <IconFile size={22} />
-          </span>
-          <p className="text-[13px]" style={{ color: "var(--color-text-soft)" }}>
-            Todavía no hay reportes generados. Van a aparecer acá una vez activada la
-            automatización diaria (Fase 4).
-          </p>
-        </div>
+        <Card>
+          <Empty
+            title="Todavía no hay reportes"
+            hint="Van a aparecer acá una vez activada la automatización diaria (Fase 4)."
+            icon={<IconFile size={18} />}
+          />
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px_1fr]">
-          <div className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-visible">
-            {sorted.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => setSelectedId(r.id)}
-                className="card shrink-0 px-3 py-2 text-left text-[13px] capitalize"
-                style={{
-                  borderColor: selected?.id === r.id ? "var(--color-accent)" : "var(--color-border)",
-                  color: selected?.id === r.id ? "var(--color-accent)" : "var(--color-text)",
-                }}
-              >
-                {formatLong(r.date)}
-              </button>
-            ))}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[192px_1fr]">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none lg:flex-col lg:overflow-visible lg:pb-0">
+            {sorted.map((r) => {
+              const active = selected?.id === r.id;
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => setSelectedId(r.id)}
+                  className="card hoverable shrink-0 px-3.5 py-2.5 text-left"
+                  style={{
+                    borderColor: active ? "var(--color-accent)" : "var(--color-border)",
+                    background: active ? "var(--color-accent-tint)" : "var(--color-surface)",
+                  }}
+                >
+                  <p className="label" style={{ marginBottom: 3 }}>
+                    {relativeDayLabel(r.date, today)}
+                  </p>
+                  <p
+                    className="text-[13px] font-medium capitalize"
+                    style={{ color: active ? "var(--color-accent)" : "var(--color-text)" }}
+                  >
+                    {formatLong(r.date)}
+                  </p>
+                </button>
+              );
+            })}
           </div>
 
           {selected && (
-            <div className="card flex flex-col gap-4 p-4">
-              <div>
-                <p className="text-[12px] uppercase tracking-wide" style={{ color: "var(--color-text-soft)" }}>
-                  Resumen de ayer
+            <div className="flex flex-col gap-4 fade">
+              <Card>
+                <SectionLabel>Resumen de ayer</SectionLabel>
+                <p className="text-[15px] leading-relaxed" style={{ textWrap: "pretty" }}>
+                  {selected.resumenAyer}
                 </p>
-                <p className="mt-1 text-[14px]">{selected.resumenAyer}</p>
+              </Card>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1.1fr_1fr]">
+                <Card>
+                  <SectionLabel>Qué toca hoy</SectionLabel>
+                  <ul className="flex flex-col">
+                    {selected.hoy.map((h, i) => (
+                      <li
+                        key={i}
+                        className="flex items-baseline gap-2.5 border-b py-2.5 text-[14px] last:border-b-0"
+                        style={{ borderColor: "var(--color-border)" }}
+                      >
+                        <span className="font-num text-[10.5px]" style={{ color: "var(--color-text-faint)" }}>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+
+                <Card>
+                  <SectionLabel>Plata del día</SectionLabel>
+                  <div className="flex flex-col gap-3">
+                    <Line label="Ingresos" value={money(selected.plata.ingresos)} color="var(--color-positive)" />
+                    <Line label="Egresos" value={money(selected.plata.egresos)} color="var(--color-alert)" />
+                    <div className="h-px w-full" style={{ background: "var(--color-border)" }} />
+                    <Line
+                      label="Balance"
+                      value={moneySigned(selected.plata.balance)}
+                      color={selected.plata.balance >= 0 ? "var(--color-positive)" : "var(--color-alert)"}
+                      strong
+                    />
+                  </div>
+                </Card>
               </div>
 
-              <div>
-                <p className="text-[12px] uppercase tracking-wide" style={{ color: "var(--color-text-soft)" }}>
-                  Qué toca hoy
+              <Card>
+                <SectionLabel>Hábitos y actividad</SectionLabel>
+                <p className="text-[14px] leading-relaxed" style={{ textWrap: "pretty" }}>
+                  {selected.habitos}
                 </p>
-                <ul className="mt-1 flex flex-col gap-1">
-                  {selected.hoy.map((h, i) => (
-                    <li key={i} className="text-[14px]">
-                      · {h}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="card px-3 py-2">
-                  <p className="text-[11px]" style={{ color: "var(--color-text-soft)" }}>
-                    Ingresos
-                  </p>
-                  <p className="font-num text-[15px]" style={{ color: "var(--color-positive)" }}>
-                    ${selected.plata.ingresos.toLocaleString("es-AR")}
-                  </p>
-                </div>
-                <div className="card px-3 py-2">
-                  <p className="text-[11px]" style={{ color: "var(--color-text-soft)" }}>
-                    Egresos
-                  </p>
-                  <p className="font-num text-[15px]" style={{ color: "var(--color-alert)" }}>
-                    ${selected.plata.egresos.toLocaleString("es-AR")}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[12px] uppercase tracking-wide" style={{ color: "var(--color-text-soft)" }}>
-                  Hábitos
-                </p>
-                <p className="mt-1 text-[14px]">{selected.habitos}</p>
-              </div>
+              </Card>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Line({
+  label,
+  value,
+  color,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-[13px] muted">{label}</span>
+      <span className="font-num" style={{ color, fontSize: strong ? 17 : 14.5 }}>
+        {value}
+      </span>
     </div>
   );
 }

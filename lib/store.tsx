@@ -8,27 +8,27 @@ import {
   useMemo,
   useState,
 } from "react";
-import { AppData, FinanceEntry, HealthEntry } from "./types";
+import { AppData, FinanceEntry, HealthEntry, TaskItem } from "./types";
 import { buildSampleData } from "./sample-data";
 
 const STORAGE_KEY = "agente-prueba:data:v1";
 
-function loadInitial(): AppData {
-  return buildSampleData();
-}
-
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
+
+type TaskPatch = Partial<Omit<TaskItem, "id">>;
 
 interface Store extends AppData {
   ready: boolean;
   addTask: (title: string, date: string, time?: string) => void;
   toggleTask: (id: string) => void;
   removeTask: (id: string) => void;
+  updateTask: (id: string, patch: TaskPatch) => void;
   addStudy: (title: string, date: string, time?: string) => void;
   toggleStudy: (id: string) => void;
   removeStudy: (id: string) => void;
+  updateStudy: (id: string, patch: TaskPatch) => void;
   addFinance: (entry: Omit<FinanceEntry, "id">) => void;
   removeFinance: (id: string) => void;
   upsertHealth: (date: string, patch: Partial<Omit<HealthEntry, "id" | "date">>) => void;
@@ -37,17 +37,32 @@ interface Store extends AppData {
 
 const StoreContext = createContext<Store | null>(null);
 
+function isValid(data: unknown): data is AppData {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Partial<AppData>;
+  return (
+    Array.isArray(d.tasks) &&
+    Array.isArray(d.study) &&
+    Array.isArray(d.finance) &&
+    Array.isArray(d.health) &&
+    Array.isArray(d.reports)
+  );
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<AppData>(loadInitial);
+  const [data, setData] = useState<AppData>(buildSampleData);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Hidratación única desde localStorage al montar en el cliente: el servidor
-    // siempre renderiza los datos de ejemplo para evitar un mismatch de hidratación.
+    // Hidratación única desde localStorage: el servidor siempre renderiza los
+    // datos de ejemplo para evitar un mismatch de hidratación.
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setData(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (isValid(parsed)) setData(parsed);
+      }
     } catch {
       // localStorage no disponible: seguimos con datos de ejemplo en memoria
     }
@@ -59,15 +74,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
-      // sin espacio o sin acceso a localStorage: se ignora silenciosamente
+      // sin espacio o sin acceso: se ignora silenciosamente
     }
   }, [data, ready]);
 
   const addTask = useCallback((title: string, date: string, time?: string) => {
-    setData((d) => ({
-      ...d,
-      tasks: [...d.tasks, { id: uid(), title, date, time, done: false }],
-    }));
+    setData((d) => ({ ...d, tasks: [...d.tasks, { id: uid(), title, date, time, done: false }] }));
   }, []);
 
   const toggleTask = useCallback((id: string) => {
@@ -81,11 +93,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id) }));
   }, []);
 
-  const addStudy = useCallback((title: string, date: string, time?: string) => {
+  const updateTask = useCallback((id: string, patch: TaskPatch) => {
     setData((d) => ({
       ...d,
-      study: [...d.study, { id: uid(), title, date, time, done: false }],
+      tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     }));
+  }, []);
+
+  const addStudy = useCallback((title: string, date: string, time?: string) => {
+    setData((d) => ({ ...d, study: [...d.study, { id: uid(), title, date, time, done: false }] }));
   }, []);
 
   const toggleStudy = useCallback((id: string) => {
@@ -99,11 +115,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setData((d) => ({ ...d, study: d.study.filter((t) => t.id !== id) }));
   }, []);
 
-  const addFinance = useCallback((entry: Omit<FinanceEntry, "id">) => {
+  const updateStudy = useCallback((id: string, patch: TaskPatch) => {
     setData((d) => ({
       ...d,
-      finance: [{ id: uid(), ...entry }, ...d.finance],
+      study: d.study.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     }));
+  }, []);
+
+  const addFinance = useCallback((entry: Omit<FinanceEntry, "id">) => {
+    setData((d) => ({ ...d, finance: [{ id: uid(), ...entry }, ...d.finance] }));
   }, []);
 
   const removeFinance = useCallback((id: string) => {
@@ -117,9 +137,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (existing) {
           return {
             ...d,
-            health: d.health.map((h) =>
-              h.date === date ? { ...h, ...patch } : h
-            ),
+            health: d.health.map((h) => (h.date === date ? { ...h, ...patch } : h)),
           };
         }
         return { ...d, health: [{ id: uid(), date, ...patch }, ...d.health] };
@@ -128,9 +146,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const resetSampleData = useCallback(() => {
-    setData(buildSampleData());
-  }, []);
+  const resetSampleData = useCallback(() => setData(buildSampleData()), []);
 
   const value = useMemo<Store>(
     () => ({
@@ -139,9 +155,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addTask,
       toggleTask,
       removeTask,
+      updateTask,
       addStudy,
       toggleStudy,
       removeStudy,
+      updateStudy,
       addFinance,
       removeFinance,
       upsertHealth,
@@ -153,9 +171,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addTask,
       toggleTask,
       removeTask,
+      updateTask,
       addStudy,
       toggleStudy,
       removeStudy,
+      updateStudy,
       addFinance,
       removeFinance,
       upsertHealth,

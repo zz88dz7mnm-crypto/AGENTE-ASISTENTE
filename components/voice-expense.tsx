@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FinanceEntry } from "@/lib/types";
-import { todayISO } from "@/lib/date-utils";
+import { money, todayISO } from "@/lib/date-utils";
 import { IconMic } from "./icons";
 
 interface SpeechRecognitionResultLike {
@@ -16,6 +16,7 @@ interface SpeechRecognitionLike {
   onend: (() => void) | null;
   onerror: (() => void) | null;
   start: () => void;
+  stop: () => void;
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
@@ -27,23 +28,24 @@ declare global {
 }
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  Supermercado: ["supermercado", "verduleria", "verdulería", "almacen", "almacén"],
-  Transporte: ["taxi", "remis", "nafta", "combustible", "subte", "colectivo", "uber"],
-  "Comida afuera": ["restaurante", "delivery", "comida", "cafe", "café", "bar"],
-  Servicios: ["luz", "gas", "internet", "agua", "servicio", "alquiler"],
-  Salud: ["farmacia", "medico", "médico", "remedio"],
-  Sueldo: ["sueldo", "cobre", "cobré", "salario"],
-  Freelance: ["freelance", "changa", "proyecto"],
+  Supermercado: ["supermercado", "verduleria", "verdulería", "almacen", "almacén", "super"],
+  Transporte: ["taxi", "remis", "nafta", "combustible", "subte", "colectivo", "uber", "sube"],
+  "Comida afuera": ["restaurante", "delivery", "comida", "cafe", "café", "bar", "pedido"],
+  Servicios: ["luz", "gas", "internet", "agua", "servicio", "alquiler", "expensas", "celular"],
+  Salud: ["farmacia", "medico", "médico", "remedio", "gimnasio", "obra social"],
+  Sueldo: ["sueldo", "cobre", "cobré", "salario", "aguinaldo"],
+  Freelance: ["freelance", "changa", "proyecto", "factura"],
 };
 
-function parseSpeech(text: string): Omit<FinanceEntry, "id"> | null {
+export function parseSpeech(text: string): Omit<FinanceEntry, "id"> | null {
   const lower = text.toLowerCase();
-  const match = lower.match(/(\d+(?:[.,]\d+)?)/);
+  const match = lower.match(/(\d+(?:[.,]\d+)?)\s*(mil|luca|lucas|k)?/);
   if (!match) return null;
-  const amount = parseFloat(match[1].replace(",", "."));
+  let amount = parseFloat(match[1].replace(",", "."));
+  if (match[2]) amount *= 1000;
   if (!amount) return null;
 
-  const isIncome = /(ingreso|cobr|sueldo|me pagaron|deposito|depósito)/.test(lower);
+  const isIncome = /(ingreso|cobr|sueldo|me pagaron|deposito|depósito|factur)/.test(lower);
 
   let category = "Otros";
   for (const [cat, words] of Object.entries(CATEGORY_KEYWORDS)) {
@@ -62,27 +64,41 @@ function parseSpeech(text: string): Omit<FinanceEntry, "id"> | null {
   };
 }
 
-export function VoiceExpense({ onCapture }: { onCapture: (entry: Omit<FinanceEntry, "id">) => void }) {
+export function VoiceExpense({
+  onCapture,
+}: {
+  onCapture: (entry: Omit<FinanceEntry, "id">) => void;
+}) {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [captured, setCaptured] = useState<Omit<FinanceEntry, "id"> | null>(null);
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   function start() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setSupported(false);
       return;
     }
     const recognition = new SpeechRecognition();
-    recognition.lang = "es-ES";
+    recognition.lang = "es-AR";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
       const text = event.results[0][0].transcript;
       setTranscript(text);
       const parsed = parseSpeech(text);
-      if (parsed) onCapture(parsed);
+      if (parsed) {
+        setCaptured(parsed);
+        onCapture(parsed);
+        window.setTimeout(() => setCaptured(null), 4200);
+      }
     };
     recognition.onend = () => setListening(false);
     recognition.onerror = () => setListening(false);
@@ -92,27 +108,49 @@ export function VoiceExpense({ onCapture }: { onCapture: (entry: Omit<FinanceEnt
   }
 
   return (
-    <div className="card flex flex-col gap-2 p-3">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={start}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
-          style={{ background: listening ? "var(--color-alert)" : "var(--color-accent)" }}
-          aria-label="Cargar gasto por voz"
-        >
-          <IconMic />
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px]">Cargar por voz</p>
-          <p className="truncate text-[11px]" style={{ color: "var(--color-text-soft)" }}>
-            {!supported
-              ? "El navegador no soporta reconocimiento de voz."
-              : listening
-              ? "Escuchando…"
-              : transcript || "Ej: “gasté 2000 en supermercado”"}
-          </p>
-        </div>
+    <div
+      className="card card-raised flex items-center gap-4 p-4"
+      style={{
+        background:
+          "linear-gradient(120deg, var(--color-surface) 0%, color-mix(in oklab, var(--color-accent) 4%, var(--color-surface)) 100%)",
+      }}
+    >
+      <button
+        onClick={start}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${listening ? "pulse" : ""}`}
+        style={{
+          background: listening ? "var(--color-alert)" : "var(--color-accent)",
+          color: "var(--color-surface)",
+          transition: "background 0.25s var(--ease-out)",
+        }}
+        aria-label={listening ? "Detener captura" : "Cargar gasto por voz"}
+      >
+        <IconMic size={18} />
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-medium">
+          {listening ? "Escuchando…" : "Cargar movimiento por voz"}
+        </p>
+        <p className="mt-0.5 truncate text-[12px] muted">
+          {!supported
+            ? "Este navegador no soporta reconocimiento de voz."
+            : captured
+            ? `${captured.type === "ingreso" ? "Ingreso" : "Egreso"} · ${captured.category} · ${money(captured.amount)}`
+            : transcript || "Decí, por ejemplo: “gasté 2 mil en supermercado”."}
+        </p>
       </div>
+      {captured && (
+        <span
+          className="shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase fade"
+          style={{
+            letterSpacing: "0.07em",
+            background: "rgba(61,122,92,0.12)",
+            color: "var(--color-positive)",
+          }}
+        >
+          Cargado
+        </span>
+      )}
     </div>
   );
 }
