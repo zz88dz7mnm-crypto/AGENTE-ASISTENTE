@@ -11,9 +11,10 @@
  *
  * Variables de entorno requeridas:
  *   SUPABASE_URL               URL del proyecto
- *   SUPABASE_SERVICE_ROLE_KEY  clave service_role (salta RLS; nunca en el cliente)
- *   AGENTE_USER_ID             opcional: id del usuario. Si falta y hay una sola
- *                              cuenta en el proyecto, se usa esa.
+ *   SUPABASE_KEY               clave del proyecto. Sirve la publishable, porque
+ *                              la app no tiene login y las políticas son
+ *                              abiertas. Si preferís la service_role, se toma
+ *                              de SUPABASE_SERVICE_ROLE_KEY.
  *
  * El análisis se imprime como JSON en stdout para que la Routine pueda releerlo
  * y reescribir el texto en prosa; el texto base que arma este script ya queda
@@ -33,32 +34,17 @@ const today = todayIn(TZ);
 const yesterday = addDays(today, -1);
 const weekStart = addDays(today, -6);
 
+// Dueño único de las filas: coincide con el default de la migración 0002.
+const OWNER_ID = process.env.AGENTE_USER_ID || "00000000-0000-0000-0000-000000000001";
+
 function connect() {
   const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
-  if (!url || !serviceKey) {
-    throw new Error(
-      "Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY. Cargalas como variables de entorno."
-    );
+  if (!url || !key) {
+    throw new Error("Faltan SUPABASE_URL y/o SUPABASE_KEY. Cargalas como variables de entorno.");
   }
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
-}
-
-async function resolveUserId(db) {
-  if (process.env.AGENTE_USER_ID) return process.env.AGENTE_USER_ID;
-
-  const { data, error } = await db.auth.admin.listUsers();
-  if (error) throw new Error(`No se pudo listar usuarios: ${error.message}`);
-
-  const users = data?.users ?? [];
-  if (users.length === 0) throw new Error("El proyecto no tiene usuarios todavía.");
-  if (users.length > 1) {
-    throw new Error(
-      "Hay más de un usuario en el proyecto: definí AGENTE_USER_ID para saber a cuál reportar."
-    );
-  }
-  return users[0].id;
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 async function fetchAll(db, userId) {
@@ -93,9 +79,8 @@ async function fetchAll(db, userId) {
 
 async function main() {
   const db = connect();
-  const userId = await resolveUserId(db);
-  const analysis = analyze(await fetchAll(db, userId), today);
-  const report = buildReport(analysis, userId, today);
+  const analysis = analyze(await fetchAll(db, OWNER_ID), today);
+  const report = buildReport(analysis, OWNER_ID, today);
 
   console.log(JSON.stringify({ analysis, report }, null, 2));
 

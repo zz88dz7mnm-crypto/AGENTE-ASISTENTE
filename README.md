@@ -47,15 +47,11 @@ supabase link --project-ref znpnbuxmgatyjqtdpync
 supabase db push
 ```
 
-### 2. Crear el usuario
+Después ejecutar, del mismo modo,
+[`supabase/migrations/0002_sin_login.sql`](supabase/migrations/0002_sin_login.sql):
+saca el login y deja todas las filas bajo un único dueño fijo.
 
-En **Authentication → Users → Add user**, con email y contraseña. Ese es el
-único usuario del sistema: es con el que se entra a la web.
-
-> Conviene desactivar el registro abierto en **Authentication → Providers →
-> Email → Allow new users to sign up**, para que nadie más pueda crearse cuenta.
-
-### 3. Variables de entorno
+### 2. Variables de entorno
 
 Copiar `.env.example` a `.env.local` (local) y cargar las mismas dos variables
 en **Vercel → Settings → Environment Variables**:
@@ -65,21 +61,23 @@ en **Vercel → Settings → Environment Variables**:
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://znpnbuxmgatyjqtdpync.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | la publishable key del proyecto |
 
-En cuanto existan esas variables, la app deja de usar localStorage y pasa a
-pedir login y a guardar todo en Supabase.
+En cuanto existan esas variables, la app deja de usar localStorage y guarda
+todo en Supabase. Después de agregarlas hay que **redesplegar**: no se aplican
+a los deploys que ya existen.
 
 ### Sobre la seguridad
 
-La publishable key viaja al navegador — es pública por diseño. Lo que protege
-los datos son dos cosas:
+**La app no tiene login: cualquiera que tenga la URL puede leer y modificar los
+datos.** Es una decisión tomada a propósito, a cambio de entrar sin fricción.
 
-- **RLS**: cada fila queda atada a un `user_id` y las políticas sólo dejan leer
-  y escribir las filas propias.
-- **Login**: sin sesión la app no muestra ninguna pantalla con datos.
+La publishable key viaja en el bundle del navegador, así que no es un secreto,
+y las políticas de RLS son abiertas (`using (true)`). La única mitigación
+activa es que la app se publica con `noindex`, así que no la indexan los
+buscadores; la privacidad depende de que la URL no circule.
 
-Sin esto, cualquiera que abriera la URL de Vercel podría leer las finanzas y el
-peso. La `service_role` key **nunca** va en Vercel ni en el repo: sólo en el
-entorno de la rutina diaria.
+Para volver a poner login: restaurar las políticas de `0001_init.sql`, crear el
+usuario en **Authentication → Users** y volver a montar el `AuthGate`, que está
+en el historial de git.
 
 ---
 
@@ -107,8 +105,8 @@ Se cargan en el entorno de Claude Code, **no** en Vercel:
 | Variable | Para qué |
 | --- | --- |
 | `SUPABASE_URL` | URL del proyecto |
-| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` (salta RLS para poder escribir el reporte) |
-| `AGENTE_USER_ID` | opcional; si hay una sola cuenta se detecta sola |
+| `SUPABASE_KEY` | la misma publishable key: alcanza, porque las políticas son abiertas |
+| `AGENTE_TZ` | opcional; por defecto `America/Argentina/Buenos_Aires` |
 
 ### Probarlo a mano
 
@@ -123,8 +121,8 @@ npm run report                # genera y guarda el reporte de hoy
 
 ```
 app/              páginas (dashboard, tareas, estudio, calendario, finanzas, salud, reportes)
-components/       UI compartida, gráficos, riel de navegación, login
-lib/              tipos, store, cliente de Supabase, auth, utilidades de fecha
+components/       UI compartida, gráficos, riel de navegación
+lib/              tipos, store, cliente de Supabase, utilidades de fecha
 scripts/          rutina del reporte diario + sus tests
 supabase/         migraciones SQL
 ```

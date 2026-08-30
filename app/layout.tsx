@@ -2,8 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
-import { AuthProvider } from "@/lib/auth";
-import { AuthGate } from "@/components/auth-gate";
 import { Rail } from "@/components/rail";
 import { SyncNotice } from "@/components/sync-notice";
 import { RegisterSW } from "@/components/register-sw";
@@ -38,6 +36,7 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Agente",
   },
+  robots: { index: false, follow: false },
   other: {
     // Next 16 emite sólo `mobile-web-app-capable`. iOS anterior a 16.4 mira
     // el meta viejo: sin él, "Agregar a inicio" abre con la barra de Safari
@@ -61,17 +60,13 @@ export default function RootLayout({
     <html lang="es">
       <body className={`${manrope.variable} ${plexMono.variable}`}>
         <RegisterSW />
-        <AuthProvider>
-          <AuthGate>
-            <DataProvider>
-              <Rail />
-              <SyncNotice />
-              <main className="mx-auto min-h-screen w-full max-w-[1020px] pl-7 pr-5 pb-20 pt-7 sm:pl-10 sm:pr-8 sm:pt-10 lg:pl-[92px]">
-                {children}
-              </main>
-            </DataProvider>
-          </AuthGate>
-        </AuthProvider>
+        <DataProvider>
+          <Rail />
+          <SyncNotice />
+          <main className="mx-auto min-h-screen w-full max-w-[1020px] pl-7 pr-5 pb-20 pt-7 sm:pl-10 sm:pr-8 sm:pt-10 lg:pl-[92px]">
+            {children}
+          </main>
+        </DataProvider>
       </body>
     </html>
   );

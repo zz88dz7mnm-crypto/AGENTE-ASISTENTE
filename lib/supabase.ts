@@ -11,3 +11,10 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export const isSupabaseConfigured = Boolean(url && key);
 
 export const supabase = isSupabaseConfigured ? createClient(url!, key!) : null;
+
+/**
+ * Dueño único de todas las filas. La app no tiene login, así que no hay
+ * auth.uid() del cual derivar la pertenencia: se usa esta constante, que
+ * coincide con el default de la migración 0002.
+ */
+export const OWNER_ID = "00000000-0000-0000-0000-000000000001";
