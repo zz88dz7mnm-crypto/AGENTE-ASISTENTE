@@ -193,7 +193,7 @@ export default function FinanzasPage() {
             </span>
             <button
               onClick={() => removeFinance(f.id)}
-              className="icon-btn h-7 w-7 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+              className="icon-btn reveal shrink-0"
               aria-label="Eliminar movimiento"
             >
               <IconTrash size={14} />

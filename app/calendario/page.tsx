@@ -7,9 +7,10 @@ import { PageHeader } from "@/components/page-header";
 import { MonthCalendar } from "@/components/month-calendar";
 import { Schedule, buildSchedule } from "@/components/schedule";
 import { Card, PageSkeleton, SectionLabel } from "@/components/ui";
+import { QuickAdd } from "@/components/quick-add";
 
 export default function CalendarioPage() {
-  const { tasks, study, toggleTask, toggleStudy, ready } = useStore();
+  const { tasks, study, toggleTask, toggleStudy, addTask, addStudy, ready } = useStore();
   const today = todayISO();
   const [selected, setSelected] = useState(today);
   const [cursor, setCursor] = useState(() => {
@@ -79,6 +80,8 @@ export default function CalendarioPage() {
               </ul>
             </div>
           )}
+
+          <QuickAdd date={selected} onAddTask={addTask} onAddStudy={addStudy} />
         </Card>
 
         <MonthCalendar

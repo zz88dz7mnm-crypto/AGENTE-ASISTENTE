@@ -14,7 +14,7 @@ interface SpeechRecognitionLike {
   maxAlternatives: number;
   onresult: ((event: SpeechRecognitionResultLike) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   start: () => void;
   stop: () => void;
 }
@@ -67,6 +67,24 @@ export function parseSpeech(text: string): Omit<FinanceEntry, "id"> | null {
   };
 }
 
+function errorMessage(code?: string): string {
+  switch (code) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "El navegador bloqueó el micrófono. Habilitalo para este sitio y probá de nuevo.";
+    case "no-speech":
+      return "No se escuchó nada. Acercá el micrófono y volvé a intentar.";
+    case "audio-capture":
+      return "No se encontró micrófono disponible.";
+    case "network":
+      return "El dictado necesita internet y no pudo conectarse.";
+    case "aborted":
+      return "Se cortó la captura.";
+    default:
+      return "No se pudo capturar el audio. Cargalo a mano acá abajo.";
+  }
+}
+
 export function VoiceExpense({
   onCapture,
 }: {
@@ -76,6 +94,7 @@ export function VoiceExpense({
   const [transcript, setTranscript] = useState("");
   const [captured, setCaptured] = useState<Omit<FinanceEntry, "id"> | null>(null);
   const [supported, setSupported] = useState(true);
+  const [problem, setProblem] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   function start() {
@@ -84,6 +103,8 @@ export function VoiceExpense({
       setListening(false);
       return;
     }
+    setProblem(null);
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setSupported(false);
@@ -104,10 +125,25 @@ export function VoiceExpense({
       }
     };
     recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
+
+    // Sin esto el botón simplemente dejaba de pulsar y el usuario no tenía
+    // forma de saber si le faltaba dar permiso, si no lo escuchó o si el
+    // navegador no soporta el dictado. En el celular es lo más común.
+    recognition.onerror = (event) => {
+      setListening(false);
+      setProblem(errorMessage(event?.error));
+    };
+
     recognitionRef.current = recognition;
-    recognition.start();
-    setListening(true);
+
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      // start() tira si ya había una captura activa.
+      setListening(false);
+      setProblem("Ya había una captura en curso. Probá de nuevo.");
+    }
   }
 
   return (
@@ -134,9 +170,14 @@ export function VoiceExpense({
         <p className="text-[14px] font-medium">
           {listening ? "Escuchando…" : "Cargar movimiento por voz"}
         </p>
-        <p className="mt-0.5 truncate text-[12px] muted">
+        <p
+          className={`mt-0.5 text-[12px] ${problem || !supported ? "leading-snug" : "truncate muted"}`}
+          style={problem || !supported ? { color: "var(--color-alert)" } : undefined}
+        >
           {!supported
-            ? "Este navegador no soporta reconocimiento de voz."
+            ? "Este navegador no soporta dictado. Cargalo a mano acá abajo."
+            : problem
+            ? problem
             : captured
             ? `${captured.type === "ingreso" ? "Ingreso" : "Egreso"} · ${captured.category} · ${money(captured.amount)}`
             : transcript || "Decí, por ejemplo: “gasté 2 mil en supermercado”."}

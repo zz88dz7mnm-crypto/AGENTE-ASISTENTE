@@ -422,3 +422,47 @@ body::after {
 .divider {
   border-color: var(--color-border);
 }
+
+/* ---------- táctil ---------- */
+
+/*
+ * Controles que se revelan al pasar el mouse. En un celular no existe el
+ * hover, así que quedaban invisibles para siempre y no había forma de borrar
+ * nada: en pantallas táctiles se muestran siempre.
+ */
+.reveal {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reveal {
+    opacity: 0;
+    transition: opacity 0.2s var(--ease-out);
+  }
+  .group:hover .reveal,
+  .reveal:focus-visible,
+  .reveal:hover {
+    opacity: 1;
+  }
+}
+
+/* Área táctil mínima cómoda con el dedo (los 34px del mouse quedan chicos). */
+@media (hover: none) {
+  .icon-btn {
+    height: 42px;
+    width: 42px;
+  }
+
+  .btn {
+    height: 44px;
+  }
+
+  /* iOS hace zoom al enfocar un campo con tipografía menor a 16px. */
+  .input,
+  .field,
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
